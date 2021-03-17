@@ -1,0 +1,7 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rocketmq-nfs-storage
+  namespace: default
+provisioner: rocketmq/nfs
+reclaimPolicy: Retain

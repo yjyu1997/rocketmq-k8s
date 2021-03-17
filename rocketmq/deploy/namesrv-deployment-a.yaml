@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: mq-namesrv-a
+  name: mq-namesrv-a
+  namespace: default
+spec:
+  type: NodePort
+  ports:
+  - port: 20901
+    targetPort: 20901
+    name: namesrv-port
+    nodePort: 30915
+  selector:
+    app: mq-namesrv-a
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mq-namesrv-a
+  namespace: default
+spec:
+  serviceName: mq-namesrv-a
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mq-namesrv-a
+  template:
+    metadata:
+     labels:
+       app: mq-namesrv-a
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                      - mq-namesrv-a
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: mq-namesrv-a
+        image: www.yusora.top/library/rocketmq_namesrv:v1
+        imagePullPolicy: Always
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh","-c","touch /tmp/health"]
+        livenessProbe:
+          exec:
+            command: ["test","-e","/tmp/health"]
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 20901
+          initialDelaySeconds: 15
+          timeoutSeconds: 5
+          periodSeconds: 20

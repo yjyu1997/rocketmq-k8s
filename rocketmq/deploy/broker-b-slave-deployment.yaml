@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: broker-b-slave
+  name: broker-b-slave
+  namespace: default
+spec:
+  type: NodePort
+  ports:
+  - port: 30914
+    targetPort: 30914
+    name: broker-port
+    nodePort: 30914
+  selector:
+    app: broker-b-slave
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: broker-b-slave
+  namespace: default
+spec:
+  serviceName: broker-b-slave
+  replicas: 1
+  selector:
+    matchLabels:
+      app: broker-b-slave
+  template:
+    metadata:
+     labels:
+       app: broker-b-slave
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - broker-a-slave
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: broker-b-slave
+        image: www.yusora.top/library/rocketmq-4.8.0:latest
+        imagePullPolicy: Always
+        command: ["sh","-c","/usr/local/rocketmq-4.8.0/bin/mqbroker  -c /usr/local/rocketmq-4.8.0/conf/broker-b-slave.properties"]
+        volumeMounts:
+          - mountPath: /root/logs
+            name: rocketmq-data
+            subPath: mq-brokeroptlogs
+          - mountPath: /data/rocketmq
+            name: rocketmq-data
+            subPath: mq-brokeroptstore
+          - name: broker-config
+            mountPath: /usr/local/rocketmq-4.8.0/conf/broker-b-slave.properties
+            subPath: broker-b-slave.properties
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh","-c","touch /tmp/health"]
+        livenessProbe:
+          exec:
+            command: ["test","-e","/tmp/health"]
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 30914
+          initialDelaySeconds: 15
+          timeoutSeconds: 5
+          periodSeconds: 20
+      volumes:
+      - name: broker-config
+        configMap:
+          name: rocketmq-config
+          items:
+          - key: broker-b-slave.properties
+            path: broker-b-slave.properties
+  volumeClaimTemplates:
+  - metadata:
+      name: rocketmq-data
+      annotations:
+        volume.beta.kubernetes.io/storage-class: "rocketmq-nfs-storage"
+    spec:
+      accessModes:
+        - ReadWriteMany
+      resources:
+        requests:
+          storage: 2Gi
